@@ -1,7 +1,7 @@
 project('NNEDI3CL', 'cpp',
   default_options : ['buildtype=release', 'b_ndebug=if-release', 'cpp_std=c++14'],
   meson_version : '>=0.48.0',
-  version : '8'
+  version : '9'
 )
 
 add_project_arguments('-ffast-math', '-DNNEDI3_DATADIR="@0@"'.format(join_paths(get_option('prefix'), get_option('datadir'), meson.project_name())), language : 'cpp')
@@ -10,7 +10,7 @@ sources = [
   'NNEDI3CL/NNEDI3CL.cpp'
 ]
 
-vapoursynth_dep = dependency('vapoursynth').partial_dependency(compile_args : true, includes : true)
+vapoursynth_dep = dependency('vapoursynth', version: '>=55').partial_dependency(compile_args: true, includes: true)
 
 boost_dep = dependency('boost', modules : ['filesystem', 'system'])
 
