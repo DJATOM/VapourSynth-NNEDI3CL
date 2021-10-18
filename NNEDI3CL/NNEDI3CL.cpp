@@ -275,13 +275,13 @@ static void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData,
         if (etype < 0 || etype > 1)
             throw std::string{ "etype must be 0 or 1" };
 
-            if (pscrn < 1 || pscrn > 2)
-                throw std::string{ "pscrn must be 1 or 2" };
-        } else {
-            if (pscrn != 1)
-                throw std::string{ "pscrn must be 1 for float input" };
-        }
 		if (d->vi.format.sampleType == stInteger) {
+			if (pscrn < 0 || pscrn > 2)
+				throw std::string{ "pscrn must be 0, 1 or 2" };
+		} else {
+			if (pscrn < 0 || pscrn > 1)
+				throw std::string{ "pscrn must be 0 or 1 for float input" };
+		}
 
         if (device_id >= static_cast<int>(compute::system::device_count()))
             throw std::string{ "device index out of range" };
@@ -458,7 +458,10 @@ static void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData,
             }
         }
 
-        float * weights0 = new float[std::max(dims0, dims0new)];
+        float * weights0{nullptr};
+        if (pscrn != 0) {
+            weights0 = new float[std::max(dims0, dims0new)];
+        }
         float * weights1 = new float[dims1 * 2];
 
         // Adjust prescreener weights
@@ -500,7 +503,7 @@ static void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData,
 
             memcpy(wf + 4, bdw + 4 * 64, (dims0new - 4 * 64) * sizeof(float));
             free(offt);
-        } else { // using old prescreener
+        } else if (pscrn == 1) { // using old prescreener
             double mean[4] = { 0.0, 0.0, 0.0, 0.0 };
 
             // Calculate mean weight of each first layer neuron
@@ -575,9 +578,13 @@ static void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData,
         const float scaleAsize = 1.0f / asize;
         const float scaleQual = 1.0f / qual;
 
-        d->weights0 = compute::buffer{ context, std::max(dims0, dims0new) * sizeof(cl_float), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR | CL_MEM_HOST_NO_ACCESS, weights0 };
+        if (pscrn != 0) {
+            d->weights0 = compute::buffer{ context, std::max(dims0, dims0new) * sizeof(cl_float), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR | CL_MEM_HOST_NO_ACCESS, weights0 };
+        }
         d->weights1Buffer = compute::buffer{ context, dims1 * 2 * sizeof(cl_float), CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR | CL_MEM_HOST_NO_ACCESS, weights1 };
-        delete[] weights0;
+        if (pscrn != 0) {
+            delete[] weights0;
+        }
         delete[] weights1;
 
         if (static_cast<size_t>(dims1 * 2) > device.get_info<size_t>(CL_DEVICE_IMAGE_MAX_BUFFER_SIZE))
@@ -591,7 +598,11 @@ static void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData,
             options.setf(std::ios::fixed, std::ios::floatfield);
             options << "-cl-denorms-are-zero -cl-fast-relaxed-math -Werror";
             options << " -D QUAL=" << qual;
-            if (pscrn == 1) {
+			if (pscrn == 0) {
+				options << " -D USE_OLD_PSCRN=0";
+				options << " -D USE_NEW_PSCRN=0";
+			}
+			else if (pscrn == 1) {
                 options << " -D PRESCREEN=prescreenOld";
                 options << " -D USE_OLD_PSCRN=1";
                 options << " -D USE_NEW_PSCRN=0";
@@ -600,7 +611,7 @@ static void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData,
                 options << " -D USE_OLD_PSCRN=0";
                 options << " -D USE_NEW_PSCRN=1";
             }
-            options << " -D PSCRN_OFFSET=" << (pscrn == 1 ? 5 : 6);
+            options << " -D PSCRN_OFFSET=" << (pscrn == 1 ? 5 : pscrn == 0 ? 0 : 6);
             options << " -D DIMS1=" << dims1;
             options << " -D NNS=" << nnsTable[nns];
             options << " -D NNS2=" << (nnsTable[nns] * 2);
